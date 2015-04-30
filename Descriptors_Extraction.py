@@ -5,7 +5,7 @@ Created on Fri Jun 13 10:08:00 2014
 @author: Fujitsu
 """
 def UserDefined(Rawfile,Indicator,Ligand_index,Protein_index, Model_index,SpiltCriteria,
-               CV_Method,FeatureSelectionMode, Iteration, NumPermute, SpiltMethod):
+               CV_Method,FeatureSelectionMode, Iteration, NumPermute):
     import os
     user = {}
     user['Root'] = os.getcwd()
@@ -19,7 +19,6 @@ def UserDefined(Rawfile,Indicator,Ligand_index,Protein_index, Model_index,SpiltC
     user['SelectionMode'] = FeatureSelectionMode
     user['Iteration'] = Iteration
     user['NumPermute'] = NumPermute
-    user['SpiltMethod'] = SpiltMethod
     
     from time import gmtime, strftime
     user['Date Started'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
@@ -30,9 +29,11 @@ def AnalysisInputfile(user):
     Rawfile = user['Rawfile']  
     Proteingroup = user['Protein_index']  
     Ligandgroup = user['Ligand_index'] 
+    Indica = user['Indicator']
     
-    import csv
+    import csv, os
     import numpy as np
+    import PCM_workflow as pcm
     fileName = Root+'/'+Rawfile+'.csv'
     with open(fileName,'rb') as csvfile:
         dialect = csv.Sniffer().has_header(csvfile.read())
@@ -47,21 +48,18 @@ def AnalysisInputfile(user):
     Yname = h.pop(-1)
     Y_array = np.append(np.reshape(np.array(Yname),(1,1)),data_array[:,-1])
     
-    if len(np.unique(data_array[:,-1])) > 3:  #regression
-        user['Datatype'] = 'Regression'
-    elif len(np.unique(data_array[:,-1])) == 3:
-        user['Datatype'] = 'Classification 3 classes'
-    elif len(np.unique(data_array[:,-1])) == 2:
-        user['Datatype'] = 'Classification 2 classes'
-        
-    psmiles = [ind for ind, val in enumerate(h) if val[0:5] == 'Smile' or val[0:5] == 'smile']
-    psequence = [ind for ind, val in enumerate(h) if val[0:8] == 'Sequence' or val[0:8] == 'sequence']
+    Yunique = np.unique(data_array[:,-1])
     
-    if len(psmiles) == 0 and len(psequence) == 0:
+    if len(Yunique) > 5:  #regression
+        user['Datatype'] = 'Regression'
+    else: 
+        user['Datatype'] = 'Classification ' + str(len(Yunique)) + ' classes'
+        
+    if Ligandgroup == [''] and Proteingroup == ['']:  ### NO building descriptor ####
         print 'All Descriptors were prepared by user'
         ise = [ind for ind,val in enumerate(h) if val == '']
         
-        if len(ise) != 0: 
+        if ise != []: #### Checking PCM model
             hi = np.reshape(np.array(h), (1,len(h)))
             hf = np.reshape(np.array(Yname), (1,1))
             h = np.append(hi,hf, axis=1)
@@ -69,86 +67,86 @@ def AnalysisInputfile(user):
             data_array = np.append(h,data_array,axis=0)
             Array_ligand = data_array[:,:ise[0]]
             Array_Pro = data_array[:,ise[0]+1:-1]
-        else:
-            if user['Ligand_index'] == []:
-                Array_ligand = []
-                Array_Pro = data_array[:,:-1]
-            elif user['Protein_index'] == []:
-                Array_ligand = data_array[:,:-1]
-                Array_Pro = []
-       
-    elif len(psmiles) == 1 and len(psequence) == 0:
-        print 'Ligand descriptors will be generated'
-        import Descriptors_Extraction as DE
-        data = data_array[:,psmiles[0]]
-        Array_ligand = DE.Ligand_gen(data, Ligandgroup)
-        px = [ind for ind,val in enumerate(h) if ind!=psmiles[0]]
-        hx = np.array(h)[px]
-        Array_Pro = np.append(np.reshape(hx,(1,len(hx))),data_array[:,px],axis=0)
-        
-    elif len(psmiles) == 0 and len(psequence) == 1:
-        print 'Protein descriptors will be generated'
-        import Descriptors_Extraction as DE
-        data = data_array[:,psequence[0]]
-        Array_Pro = DE.Protein_gen(data,Proteingroup)
-        px = [ind for ind,val in enumerate(h) if ind!=psequence[0]]
-        hx = np.array(h)[px]
-        Array_ligand = np.append(np.reshape(hx,(1,len(hx))),data_array[:,px],axis=0)
-        
-    elif len(psmiles) == 1 and len(psequence) == 1:
-        print 'Ligand & Protein descriptors will be generated'
-        import Descriptors_Extraction as DE
-        data1 = data_array[:,psmiles[0]]
-        data2 = data_array[:,psequence[0]]
-        Array_ligand = DE.Ligand_gen(data1,Ligandgroup)
-        Array_Pro = DE.Ligand_gen(data2,Proteingroup)
-        
-    elif len(psmiles) == 2 and len(psequence) == 0:
-        print 'Two different Ligand descriptors will be generated'
-        import Descriptors_Extraction as DE
-        data1 = data_array[:,psmiles[0]]
-        data2 = data_array[:,psmiles[1]]
-        Array_ligand = DE.Ligand_gen(data1,Ligandgroup)
-        Array_Pro = DE.Ligand_gen(data2,Proteingroup)
-        
-    elif len(psmiles) == 0 and len(psequence) == 2:
-        print 'Two different Protein descriptors will be generated'
-        import Descriptors_Extraction as DE
-        data1 = data_array[:,psequence[0]]
-        data2 = data_array[:,psequence[1]]
-        Array_ligand = DE.Protein_gen(data1,Ligandgroup)
-        Array_Pro = DE.Protein_gen(data2,Proteingroup)
-        
-################## Comnbine All array for saving ##############
-    emp = np.array([None for i in range(Array_Pro.shape[0])])
-    emp = np.reshape(emp, (emp.shape[0],1))
-    
-    Array = np.append(Array_ligand, emp, axis=1)
-    Array = np.append(Array, Array_Pro, axis=1)
-    Array = np.append(Array, np.reshape(Y_array,(len(Y_array),1)), axis=1)
-
-    path = user['Root']
-    raw = user['Rawfile']
-    Indica = user['Indicator']
-    
-    import os
-    try:
-        os.makedirs(path+'/'+Indica)
-    except OSError:
-        pass
-    
-    with open(path+'/'+Indica+'/'+raw+'_complete'+'.csv', 'wb') as csvfile:
-        spam = csv.writer(csvfile,delimiter=',',quotechar='|', quoting=csv.QUOTE_MINIMAL )
-        for k in range(len(Array)):
-            spam.writerow(Array[k])
             
-    return Array_ligand, Array_Pro, Y_array, user
+            pcm.Xval(Array_ligand,Array_Pro,Y_array, user)
+        else:   #### Checking non-PCM model
+            X = data_array[:,:-1]
+            pcm.Xval_nonPCM(X,h,Y_array,user)
+    else:   ####  Process of Buidiling descriptor  #############
+        try:
+            os.makedirs(Root+'/'+Indica)
+        except OSError:
+            pass
+        
+        Des_path = Root+'/'+Indica
+    
+        if [ind for ind,val in enumerate(os.listdir(Des_path)) if val == Rawfile+'_complete'+'.csv'] != []:
+            pass
+        else:
+            psmiles = [ind for ind, val in enumerate(h) if val[0:5] == 'Smile' or val[0:5] == 'smile']
+            psequence = [ind for ind, val in enumerate(h) if val[0:8] == 'Sequence' or val[0:8] == 'sequence']
+        
+            if len(psmiles) == 1 and len(psequence) == 0:
+                print 'Ligand descriptors will be generated'
+                import Descriptors_Extraction as DE
+                data = data_array[:,psmiles[0]]
+                Array_ligand = DE.Ligand_gen(data, Ligandgroup)
+                px = [ind for ind,val in enumerate(h) if ind!=psmiles[0]]
+                hx = np.array(h)[px]
+                Array_Pro = np.append(np.reshape(hx,(1,len(hx))),data_array[:,px],axis=0)
+        
+            elif len(psmiles) == 0 and len(psequence) == 1:
+                print 'Protein descriptors will be generated'
+                import Descriptors_Extraction as DE
+                data = data_array[:,psequence[0]]
+                Array_Pro = DE.Protein_gen(data,Proteingroup)
+                px = [ind for ind,val in enumerate(h) if ind!=psequence[0]]
+                hx = np.array(h)[px]
+                Array_ligand = np.append(np.reshape(hx,(1,len(hx))),data_array[:,px],axis=0)
+        
+            elif len(psmiles) == 1 and len(psequence) == 1:
+                print 'Ligand & Protein descriptors will be generated'
+                import Descriptors_Extraction as DE
+                data1 = data_array[:,psmiles[0]]
+                data2 = data_array[:,psequence[0]]
+                Array_ligand = DE.Ligand_gen(data1,Ligandgroup)
+                Array_Pro = DE.Ligand_gen(data2,Proteingroup)
+        
+            elif len(psmiles) == 2 and len(psequence) == 0:
+                print 'Two different Ligand descriptors will be generated'
+                import Descriptors_Extraction as DE
+                data1 = data_array[:,psmiles[0]]
+                data2 = data_array[:,psmiles[1]]
+                Array_ligand = DE.Ligand_gen(data1,Ligandgroup)
+                Array_Pro = DE.Ligand_gen(data2,Proteingroup)
+        
+            elif len(psmiles) == 0 and len(psequence) == 2:
+                print 'Two different Protein descriptors will be generated'
+                import Descriptors_Extraction as DE
+                data1 = data_array[:,psequence[0]]
+                data2 = data_array[:,psequence[1]]
+                Array_ligand = DE.Protein_gen(data1,Ligandgroup)
+                Array_Pro = DE.Protein_gen(data2,Proteingroup)
+                
+            import PCM_workflow as pcm
+            pcm.Xval(Array_ligand,Array_Pro,Y_array, user)
+        
+################# Comnbine All array for saving ##############
+            emp = np.array([None for i in range(Array_Pro.shape[0])])
+            emp = np.reshape(emp, (emp.shape[0],1))
+            
+            Array = np.append(Array_ligand, emp, axis=1)
+            Array = np.append(Array, Array_Pro, axis=1)
+            Array = np.append(Array, np.reshape(Y_array,(len(Y_array),1)), axis=1)
+        
+            with open(Root+'/'+Indica+'/'+Rawfile+'_complete'+'.csv', 'wb') as csvfile:
+                spam = csv.writer(csvfile,delimiter=',',quotechar='|', quoting=csv.QUOTE_MINIMAL )
+                for k in range(len(Array)):
+                    spam.writerow(Array[k])
    
     
 def Ligand_gen(data, Ligandgroup):
-    import os
     import numpy as np
-#    os.chdir('C:\Users\Fujitsu\Anaconda\envs\Rdkit')
     from pydpi.pydrug import PyDrug
     drug=PyDrug()
 
