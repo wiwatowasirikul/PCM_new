@@ -83,8 +83,8 @@ def AnalysisInputfile(user):
         if [ind for ind,val in enumerate(os.listdir(Des_path)) if val == Rawfile+'_complete'+'.csv'] != []:
             pass
         else:
-            psmiles = [ind for ind, val in enumerate(h) if val[0:5] == 'Smile' or val[0:5] == 'smile']
-            psequence = [ind for ind, val in enumerate(h) if val[0:8] == 'Sequence' or val[0:8] == 'sequence']
+            psmiles = [ind for ind, val in enumerate(h) if val[:5] == 'Smiles' or val[:5] == 'smiles' or val=='MolSmiles']
+            psequence = [ind for ind, val in enumerate(h) if val[:8] == 'Sequence' or val[:8] == 'sequence']
         
             if len(psmiles) == 1 and len(psequence) == 0:
                 print 'Ligand descriptors will be generated'
@@ -155,7 +155,7 @@ def Ligand_gen(data, Ligandgroup):
     for i in range(len(data)):
         drug.ReadMolFromSmile(data[i])
         keys, values = [],[]
-    
+
         for j in Ligandgroup:
             if j == '0':    #all descriptors   615
                 res = drug.GetAllDescriptor()
