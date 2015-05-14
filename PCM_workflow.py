@@ -3,12 +3,45 @@
 Created on Sun Jul 13 08:57:58 2014
 
 @author: Fujitsu
-"""
+
+"""   
+def Xval_nonPCM(X,h,Y,user):
+    import os,pickle
+    import numpy as np
+    path = user['Root'] 
+    IndicatorName = user['Indicator']
+    
+    XX = {}
+    XX['X'] = X
+    XX['H'] = h
+    if user['Datatype'] == 'Regression':
+        XX['Y'] = np.delete(Y,0,axis=0).astype(np.float)
+    else:
+        XX['Y'] = np.delete(Y,0,axis=0)
+    try:
+        os.makedirs(path+'/'+IndicatorName+'/XVAL')
+    except OSError:
+        pass
+            
+    Xval_path = path+'/'+IndicatorName+'/XVAL'
+            
+    if len(os.listdir(Xval_path)) > 0:
+        pass
+    else:
+        out = open(Xval_path+'/X1'+'.pkl','wb')
+        pickle.dump(XX, out)
+        out.close()
+            
+        NumDes = np.zeros((13,6),dtype=np.int)
+        NumDes[0,0], NumDes[0,-1] = len(h), len(h) 
+        out1 = open(Xval_path+'/NumDes.pkl','wb')
+        pickle.dump(NumDes, out1)
+        out1.close() 
+        
 def Xval(DL,DP,Y, user):
     import numpy as np
     import ProChem as PCM
-    import pickle
-    import os
+    import pickle, os
     
     path = user['Root']
     IndicatorName = user['Indicator']
@@ -38,7 +71,7 @@ def Xval(DL,DP,Y, user):
         NumDes = np.zeros((13,5),dtype=np.int)
         
         XX = {}
-        ######################## Build 13 models ###########################    
+        ######################## Build 13 PCM models ###########################    
         for model_iter in range(1,14):
             if model_iter == 1:   #model 1: Ligand only
                 print 'Model 1: L'
@@ -184,6 +217,7 @@ def Model_Selection(user):
     h_num =  np.reshape(np.array(h_list),(1,6))
     #########################################################################    
     if Descriptors_Selection == 'None':
+        print h_num.shape
         NumDes = np.append(h_num,NumDes,axis=0)
         harray = Var_header
     elif Descriptors_Selection == 'VIP':
@@ -193,11 +227,10 @@ def Model_Selection(user):
     return  Var_X, Var_Y, Var_header, harray, NumDes 
         
 def Index_Train_Ext(X, user):
-    Method = user['SpiltMethod']
     Criteria = user['Spiltcriteria']
     Iter = user['Iteration']
     import numpy as np
-    import Method_SamplingData as MS
+    from sklearn import cross_validation 
     M = list(X.viewkeys())
     
     numcol = []
@@ -206,30 +239,25 @@ def Index_Train_Ext(X, user):
     idx_M = [ind for ind,val in enumerate(numcol) if val == np.min(np.array(numcol))]
     
     X = X[M[idx_M[0]]]
-    Expect_ext = int(np.round(Criteria*len(X)))
+    k = int(np.round(1/Criteria))
     ind_ext_out = []
     for i in range(Iter):
-        if Method == 'Random':
-            import random
-            ind_ext = random.sample(range(len(X)), Expect_ext)
-        elif Method == 'PCA':
-            labels = MS.PCA(X, Expect_ext)
-            ind_ext = MS.CluterAnalysis(labels, Criteria, Expect_ext)
-        elif Method == 'KMean':
-            labels = MS.KMean(X, Expect_ext)
-            ind_ext = MS.CluterAnalysis(labels, Criteria, Expect_ext)
-        elif Method == 'HC':
-            labels = MS.HierachicalClustering(X, Expect_ext)
-            ind_ext = MS.CluterAnalysis(labels, Criteria, Expect_ext)
+        kf = cross_validation.KFold(X.shape[0],n_folds=k,shuffle=True,random_state=None)
+        ind_ext = []        
+        for tr,te in kf:
+            ind_ext.append(te)
         ind_ext_out.append(ind_ext)
     return ind_ext_out
     
 def Prediction(XM, Y, ind_ext, user):
+    Criteria = user['Spiltcriteria']
     CV_Method = user['CV_Method']
+    Iter = user['Iteration']
     import numpy as np
     import Method_SamplingData as MS
     import PredictivePerformance as PP
     import PCM_workflow as PW 
+    from sklearn import cross_validation 
    
     print '############## PLS prediction is being processed ###############'
     M = list(XM.viewkeys())
@@ -239,61 +267,89 @@ def Prediction(XM, Y, ind_ext, user):
     m_re = sorted(m_re)
     m_re = ['Model_'+str(j) for j in m_re]
     
-    YpTRAll = np.zeros((len(Y)-len(ind_ext[0]),14,len(ind_ext)))
-    YpCVAll = np.zeros((len(Y)-len(ind_ext[0]),14,len(ind_ext))) 
-    YpCVeAll = np.zeros((len(ind_ext[0]),14,len(ind_ext)))
+
+    YkeepALL = np.zeros((2*len(Y),26,Iter)) 
     
     if user['Datatype'] == 'Regression':
-        SumPer = np.zeros((13,6,len(ind_ext)))
+        PerALL = np.zeros((13,6,Iter))
     elif user['Datatype'] == 'Classification 2 classes':
-        SumPer = np.zeros((13,12,len(ind_ext)))
-
-    for k in range(len(ind_ext)):
-        print 'Iteration: %i' %(k+1)
-        ind_ext_i = ind_ext[k]
+        PerALL = np.zeros((13,12,Iter))
         
-        Ytr = np.delete(Y,ind_ext_i,axis=0)
-        kf = MS.CV_determination(Ytr,CV_Method)
+    K = int(np.round(1/Criteria))
+        
+    for k in range(Iter):   ## Kernald-stone algorithm
+        print 'Iteration: %i' %(k+1)
+        kfext = cross_validation.KFold(len(Y),n_folds=K,shuffle=True,random_state=None)
         
         if user['Datatype'] == 'Regression':
             Performance = np.zeros((13,6))
         elif user['Datatype'] == 'Classification 2 classes':
             Performance = np.zeros((13,12))
 
-        YpTRs, YpCVs = np.zeros((len(Ytr),14)), np.zeros((len(Ytr),14))
-        YpTRs[:,0], YpCVs[:,0] = Ytr, Ytr
-        
-        YpCVes = np.zeros((len(ind_ext_i),14))
-        YpCVes[:,0] = Y[ind_ext_i]
-        
+        Ykeep = np.zeros((2*len(Y),26))
+
         for ind_M in m_re:
-            print ind_M +' is being processed'
-            X = XM[ind_M]
-            Xext, Yext = X[ind_ext_i], Y[ind_ext_i]
-            Xtr = np.delete(X,ind_ext_i,axis=0)
+            print ind_M +' is being processed'   ## Model selection
+            X = XM[ind_M] 
+         
+            mR2, mQ2, mP2, mRMSE_tr, mRMSE_CV, mRMSE_ext = [],[],[],[],[],[]
+            mYpredtr, mYpredCV, mYpredext = [],[],[]
+            mYtruetr, mYtrueext = [] ,[]
+            for TR, ext in kfext:   ##Inner cross-validation
                 
-            YpredCV,Q2,RMSE_CV,OptimalPC = PW.CV_Processing(Xtr,Ytr,kf)
-            Ypredtr,R2,RMSE_tr = PW.Train__or_ext_processing(Xtr,Ytr,OptimalPC)  
-            Ypredext, Q2_ext,RMSE_ext = PW.Train__or_ext_processing(Xext,Yext,OptimalPC)
-            YpredCVC = YpredCV[:,OptimalPC]
+                XTR, YTR = X[TR], Y[TR]
+                Xext,Yext = X[ext], Y[ext]
+                kf = MS.CV_determination(YTR,CV_Method)
+                
+                YpredCV,Q2,RMSE_CV,OptimalPC = PW.CV_Processing(XTR,YTR,kf)
+                Ypredtr,R2,RMSE_tr = PW.Train__or_ext_processing(XTR,YTR,OptimalPC) 
+                Ypredext,P2,RMSE_ext = PW.Train__or_ext_processing(Xext,Yext,OptimalPC)
+                #### Keep performance ####
+                mR2.append(R2), mQ2.append(Q2), mP2.append(P2)
+                mRMSE_tr.append(RMSE_tr), mRMSE_CV.append(RMSE_CV), mRMSE_ext.append(RMSE_ext)
+                
+                mYpredtr.append(Ypredtr)
+                mYpredCV.append(YpredCV[:,OptimalPC])
+                mYpredext.append(Ypredext)
+                
+                mYtruetr.append(YTR), mYtrueext.append(Yext)
+
+            iMaxQ2 = [ind for ind, val in enumerate(mQ2) if val == np.max(mQ2)]
+            
+            maxYtruetr, maxYpredtr = mYtruetr[iMaxQ2[0]], mYpredtr[iMaxQ2[0]]
+            maxYpredCV = mYpredCV[iMaxQ2[0]]
+            maxYtrueext, maxYpredext = mYtrueext[iMaxQ2[0]], mYpredext[iMaxQ2[0]]  
+            
+            A, B, C = len(maxYpredtr), len(maxYpredCV), len(maxYpredext)
+            
+            Ykeep[:A,2*(int(ind_M[6:]))-2] = maxYtruetr
+            Ykeep[:A,2*(int(ind_M[6:]))-1] = maxYpredtr
+            
+            Ykeep[A+1:A+B+1,2*(int(ind_M[6:]))-2] = maxYtruetr
+            Ykeep[A+1:A+B+1,2*(int(ind_M[6:]))-1] = maxYpredCV
+            
+            Ykeep[A+B+2:A+B+C+2, 2*(int(ind_M[6:]))-2] = maxYtrueext
+            Ykeep[A+B+2:A+B+C+2, 2*(int(ind_M[6:]))-1] = maxYpredext
+            
+            r2 = np.round(np.mean(mR2),3)
+            q2 = np.round(np.mean(mQ2),3)
+            p2 = np.round(np.mean(mP2),3)
+            rmse_tr = np.round(np.mean(mRMSE_tr),3)
+            rmse_cv = np.round(np.mean(mRMSE_CV),3)
+            rmse_ext = np.round(np.mean(mRMSE_ext),3)
             
             if user['Datatype'] == 'Regression':
-                Performance = Performance + PP.ArrayPerformance_sigle_model(ind_M, R2,Q2,Q2_ext,RMSE_tr,RMSE_CV,RMSE_ext)
-            elif user['Datatype'] == 'Classification 2 classes':
-                YpredCVC, classCV = PW.Classify_using_threholding2(YpredCVC, Ytr)
-                Ypredtr, classtr = PW.Classify_using_threholding2(Ypredtr, Ytr)
-                Ypredext,classext = PW.Classify_using_threholding2(Ypredext, Yext)
-                Performance = Performance + PP.ArrayPerformance_class_single_model(ind_M, classCV, classtr, classext)
-                
-            YpCVs[:,int(ind_M[6:])] = YpredCVC
-            YpTRs[:,int(ind_M[6:])] = Ypredtr
-            YpCVes[:,int(ind_M[6:])] = Ypredext
+                Performance = Performance + PP.ArrayPerformance_sigle_model(ind_M, r2,q2,p2,rmse_tr,rmse_cv,rmse_ext)
+#            elif user['Datatype'] == 'Classification 2 classes':
+#                YpredCVC, classCV = PW.Classify_using_threholding2(YpredCVC, Ytr)
+#                Ypredtr, classtr = PW.Classify_using_threholding2(Ypredtr, Ytr)
+#                Ypredext,classext = PW.Classify_using_threholding2(Ypredext, Yext)
+#                Performance = Performance + PP.ArrayPerformance_class_single_model(ind_M, classCV, classtr, classext)
+
+        YkeepALL[:,:,k] = Ykeep
+        PerALL[:,:,k] = Performance
         
-        YpCVAll[:,:,k] = YpCVs
-        YpTRAll[:,:,k] = YpTRs
-        YpCVeAll[:,:,k] = YpCVes 
-        SumPer[:,:,k] = Performance
-    return PP.AnalysisPerformance3D(YpCVAll, YpTRAll, YpCVeAll, SumPer, m_re, user)
+    return PP.AnalysisPerformance3D(YkeepALL, PerALL, m_re, user)
 
 def Yscrambling(XM,Y, user):
     if user['Datatype'] == 'Regression':
@@ -392,7 +448,7 @@ def CV_Processing(X,Y,kf):
         r2 = PP.rsquared(Ytrue,Ypred)
         rsqured.append(r2)
         ArrayYpredCV[:,PC] = Ypred
-  
+
     ArrayYpredCV[:,0] = Ytrue               
     SeriesPRESS = PP.PRESS(ArrayYpredCV)
     OPC_Q2 = PP.Q2(SeriesPRESS, X.shape[0])
