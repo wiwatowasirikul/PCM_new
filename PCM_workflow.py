@@ -500,7 +500,7 @@ def Classify_using_threholding2(Ypred, Ytrue):
     
     return Ypredall, classper
         
-def Combine_array(NumDes,h, Mean,SD,R2,Q2,Q2ext,Q2permute,Scamb,user):
+def Combine_array(NumDes,h, Mean,SD,Ykeep,Q2permute,Scamb,user):
     IndicatorName = user['Indicator']
     import numpy as np
     import xlsxwriter
@@ -520,8 +520,8 @@ def Combine_array(NumDes,h, Mean,SD,R2,Q2,Q2ext,Q2permute,Scamb,user):
     Valueuser = [str(k) for k in Valueuser] 
     
     l,v = Listuser, Valueuser
-    L = [l[12],l[9],l[2],l[4],l[7],l[1],l[8],l[3],l[10],l[0],l[11],l[6],l[13],l[5]]
-    V = [v[12],v[9],v[2],v[4],v[7],v[1],v[8],v[3],v[10],v[0],v[11],v[6],v[13],v[5]]
+    L = [l[11],l[8],l[3],l[2],l[6],l[1],l[7],l[0],l[9],l[10],l[5],l[12],l[4]]
+    V = [v[11],v[8],v[3],v[2],v[6],v[1],v[7],v[0],v[9],v[10],v[5],v[12],v[4]]
     for ii in range(len(Listuser)):
         worksheet.write(ii,0,L[ii])
         worksheet.write(ii,1,V[ii])
@@ -554,20 +554,10 @@ def Combine_array(NumDes,h, Mean,SD,R2,Q2,Q2ext,Q2permute,Scamb,user):
     fileout1 = path+'/'+IndicatorName+'/parameters/'+A+'.xlsx'
     workbook1 = xlsxwriter.Workbook(fileout1)
     
-    worksheet = workbook1.add_worksheet('Train')
-    for jj in range(np.shape(R2)[0]):
-        for kk in range(np.shape(R2)[1]):
-            worksheet.write(jj,kk,R2[jj,kk])
-            
-    worksheet = workbook1.add_worksheet('CV')
-    for jj in range(np.shape(Q2)[0]):
-        for kk in range(np.shape(Q2)[1]):
-            worksheet.write(jj,kk,Q2[jj,kk])
-            
-    worksheet = workbook1.add_worksheet('Q2ext')
-    for jj in range(np.shape(Q2ext)[0]):
-        for kk in range(np.shape(Q2ext)[1]):
-            worksheet.write(jj,kk,Q2ext[jj,kk])
+    worksheet = workbook1.add_worksheet('Y')
+    for jj in range(np.shape(Ykeep)[0]):
+        for kk in range(np.shape(Ykeep)[1]):
+            worksheet.write(jj,kk,Ykeep[jj,kk])
             
     worksheet = workbook1.add_worksheet('Yscrambling')
     for jj in range(np.shape(Scamb)[0]):

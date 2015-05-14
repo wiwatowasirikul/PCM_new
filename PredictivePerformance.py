@@ -104,33 +104,41 @@ def ArrayPerformance_sigle_model(Model,R2,Q2,Q2ext,RMSE_tr,RMSE_CV,RMSE_ext):
     Array[int(Model[6:])-1,5] = round(RMSE_ext,3)
     return Array
     
-def AnalysisPerformance3D(Q2,R2,Q2ext,SumPer, m_re, user):    
+def AnalysisPerformance3D(YkeepAll, SumPer, m_re, user):    
     import numpy as np
     import os
     
-    Max3D = np.argmax(np.array(SumPer), axis=2)
-    Max3D = Max3D[:,0:3]
+    C = []
+    for k in range(3):
+        ConArray = np.zeros((SumPer.shape[0],SumPer.shape[2]))
+        for i in range(SumPer.shape[2]):
+            ConArray[:,i] = SumPer[:,k,i]
     
-    R2max = np.zeros((R2.shape[0], 14)) 
-    R2max[:,0] = R2[:,0,0]
+        Conmax = np.max(ConArray,axis=1)
+        for j in range(ConArray.shape[0]):
+            for jj in range(ConArray.shape[1]):
+                if ConArray[j,jj] == Conmax[j]:
+                    ConArray[j,jj] = 1
+                else:
+                    ConArray[j,jj] = 0
     
-    Q2max = np.zeros((Q2.shape[0], 14)) 
-    Q2max[:,0] = Q2[:,0,0]
+        A = np.sum(ConArray,axis=0)
+        B = [ind for ind,val in enumerate(A) if val == np.max(A)]
+        C.extend(B)
+    unique, counts = np.unique(np.array(C), return_counts=True)
+    D = [ind for ind ,val in enumerate(counts) if val == np.max(counts)]
+    if len(D) > 1:
+        D = unique(D[0])
+
+    Y = YkeepAll[:,:,D[0]]
     
-    Q2extmax = np.zeros((Q2ext.shape[0], 14)) 
-    Q2extmax[:,0] = Q2ext[:,0,0]
-    
-    for i in m_re:
-        r = Max3D[int(i[6:])-1,:]
-        R2max[:,int(i[6:])] = R2[:,int(i[6:]),r[0]]
-        Q2max[:,int(i[6:])] = Q2[:,int(i[6:]),r[1]]
-        Q2extmax[:,int(i[6:])] = Q2ext[:,int(i[6:]),r[2]]
-    
-    H = ['Ytrue','M1','M2','M3','M4','M5','M6','M7','M8','M9','M10','M11','M12','M13']
-    hM =  np.reshape(np.array(H),(1,14))
-    R2max = np.append(hM,R2max,axis=0)
-    Q2max = np.append(hM,Q2max,axis=0)
-    Q2extmax = np.append(hM,Q2extmax,axis=0)
+    H = []
+    for p in range(13):
+        H.append('YtrueM'+str(p+1))
+        H.append('YpredM'+str(p+1))
+
+    hM =  np.reshape(np.array(H),(1,len(H)))
+    Ykeep = np.append(hM,Y,axis=0)
     
     path = user['Root']
     IndicatorName = user['Indicator'] 
@@ -139,7 +147,7 @@ def AnalysisPerformance3D(Q2,R2,Q2ext,SumPer, m_re, user):
     except OSError:
         pass
             
-    return np.mean(SumPer, axis=2), np.std(SumPer, axis=2), R2max, Q2max, Q2extmax
+    return np.mean(SumPer, axis=2), np.std(SumPer, axis=2), Ykeep
     
 def ArrayPerformance_class_single_model(Model, classCV, classtr, classext):
     import numpy as np

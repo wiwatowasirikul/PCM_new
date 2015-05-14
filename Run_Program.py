@@ -33,13 +33,15 @@ def ModuleMain():
     Ex.AnalysisInputfile(userdefined)
     X, Y, H, harray, NumDes = pcm.Model_Selection(userdefined)
     ind_ext = pcm.Index_Train_Ext(X, userdefined)
-    Mean, SD, YpTr, YpCv, YpExt = pcm.Prediction(X,Y,ind_ext, userdefined)
+    Mean, SD, Ykeep = pcm.Prediction(X,Y,ind_ext, userdefined)
     Q2_intercept, Scamb = pcm.Yscrambling(X,Y, userdefined)
-    pcm.Combine_array(NumDes, harray, Mean, SD, YpTr, YpCv, YpExt, Q2_intercept, Scamb, userdefined)   
+    pcm.Combine_array(NumDes, harray, Mean, SD, Ykeep, Q2_intercept, Scamb, userdefined)   
 
 if __name__ == '__main__':
     from multiprocessing import Process
     p = Process(target=ModuleMain)
     p.start()
    
+   
+   ##python Run_Program.py ExampleData Result [0] [0] [0] 10-folds None 0.15 20 100
        
